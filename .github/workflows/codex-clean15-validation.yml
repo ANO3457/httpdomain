@@ -1,0 +1,46 @@
+name: Validate clean-history parallel-read replacement
+on:
+  push:
+    branches: [validation/codex25-http15-clean]
+permissions:
+  contents: read
+jobs:
+  validate:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - {python: '3.10', tox: py310}
+          - {python: '3.11', tox: py311}
+          - {python: '3.12', tox: py312}
+          - {python: '3.13', tox: py313}
+          - {python: '3.14', tox: py314}
+          - {python: '3.15', tox: py315}
+          - {python: '3.10', tox: py310-sphinx-version-smoke}
+          - {python: '3.15', tox: linkcheck}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Exact product and clean feature history
+        run: |
+          git checkout 144e0eacc161a5514bd974362064e08510290078
+          test "$(git rev-parse HEAD^)" = 32c21562d85d3accf4f06a0a88a1b24f92089ce5
+          test "$(git rev-list --count 32c21562d85d3accf4f06a0a88a1b24f92089ce5..HEAD)" = 1
+          git diff --exit-code 32c21562d85d3accf4f06a0a88a1b24f92089ce5 HEAD -- .gitignore .vscode public .github
+          git diff --check
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          version: '0.12.19'
+          python-version: ${{ matrix.python }}
+      - run: uv tool install tox --with tox-uv
+      - name: Repository locked tox target
+        run: tox r -e ${{ matrix.tox }} 2>&1 | tee validation.log
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: http15-clean-${{ matrix.tox }}
+          path: validation.log
